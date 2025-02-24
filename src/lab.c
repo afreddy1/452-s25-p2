@@ -11,6 +11,9 @@
 #include <fcntl.h>
 #include "../src/lab.h"
 
+#define MINOR_VERSION 0  //Task2 
+#define MAJOR_VERSION 1  //Task2
+
 static void explain_waitpid(int status)
 {
     if (!WIFEXITED(status))
@@ -32,6 +35,81 @@ static void explain_waitpid(int status)
     {
         fprintf(stderr, "Child was resumed by delivery of SIGCONT\n");
     }
+}
+
+char *trim_white(char *line) {
+    if(!line) return NULL;
+
+    while (isspace((unsigned char)*line)) line++;
+
+    if(*line == 0) return line;
+
+    char *end = line + strlen(line) - 1;
+
+    while( end > line && isspace((unsigned char)*end)) end--;
+
+    *(end + 1) = '\0';
+    
+    return line;
+}
+
+char *get_prompt(const char *env) {
+    const char *prompt_value = getenv(env);
+
+    if(prompt_value == NULL || strlen(prompt_value) == 0) {
+        prompt_value = "sh>";
+    }
+
+    char *result = malloc(strlen(prompt_value) + 1);
+
+    if (!result) {
+        perror("malloc failed");
+        exit (EXIT_FAILURE);
+    }
+
+    strcpy(result, prompt_value);
+    return result; 
+}
+
+void parse_args(int argc, char **argv) {
+    int opt;
+    while ((opt = getopt(argc, argv, "v")) != -1) {
+        switch(opt) {
+            case 'v':
+                printf("Shell Version: %d.%d\n", MAJOR_VERSION, MINOR_VERSION);
+                exit(0);
+            default:
+                fprintf(stderr, "Usage: %s [-v]\n", argv[0]);
+                exit(1);
+        }
+    }
+}
+
+void sh_init(struct shell *sh) {
+    sh->shell_terminal = STDIN_FILENO;
+    sh->shell_is_interactive = isatty(sh->shell_terminal);
+    sh->shell_pgid = getpid();
+    setpgid(sh->shell_terminal, sh->shell_pgid);
+    tcsetpgrp(sh->shell_terminal, sh->shell_pgid);
+    sh->prompt = get_prompt("SHELL_PROMPT");
+}
+
+void sh_destroy(struct shell *sh) {
+    free(sh->prompt);
+}
+
+char **cmd_parse(char const *line) {
+    UNUSED(line)
+    return NULL;
+}
+bool do_builtin(struct shell *sh, char **argv) {
+    UNUSED(sh);
+    UNUSED(argv);
+
+    return false;
+}
+void cmd_free(char **line) {
+    UNUSED(line);
 }
 
 int main(int argc, char *argv[])
