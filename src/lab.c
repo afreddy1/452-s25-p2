@@ -10,169 +10,170 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include "../src/lab.h"
+#include <errno.h>
 
-#define MINOR_VERSION 0  //Task2 
-#define MAJOR_VERSION 1  //Task2
-
-static void explain_waitpid(int status)
-{
-    if (!WIFEXITED(status))
-    {
-        fprintf(stderr, "Child exited with status %d\n", WEXITSTATUS(status));
-    }
-
-    if (WIFSIGNALED(status))
-    {
-        fprintf(stderr, "Child exited via signal %d\n", WTERMSIG(status));
-    }
-
-    if (WIFSTOPPED(status))
-    {
-        fprintf(stderr, "Child stopped by %d\n", WSTOPSIG(status));
-    }
-
-    if (WIFCONTINUED(status))
-    {
-        fprintf(stderr, "Child was resumed by delivery of SIGCONT\n");
-    }
-}
-
-char *trim_white(char *line) {
-    if(!line) return NULL;
-
-    while (isspace((unsigned char)*line)) line++;
-
-    if(*line == 0) return line;
-
-    char *end = line + strlen(line) - 1;
-
-    while( end > line && isspace((unsigned char)*end)) end--;
-
-    *(end + 1) = '\0';
-    
-    return line;
-}
-
-char *get_prompt(const char *env) {
-    const char *prompt_value = getenv(env);
-
-    if(prompt_value == NULL || strlen(prompt_value) == 0) {
-        prompt_value = "sh>";
-    }
-
-    char *result = malloc(strlen(prompt_value) + 1);
-
-    if (!result) {
-        perror("malloc failed");
-        exit (EXIT_FAILURE);
-    }
-
-    strcpy(result, prompt_value);
-    return result; 
-}
+#define lab_MINOR_VERSION 0  
+#define lab_MAJOR_VERSION 1  
 
 void parse_args(int argc, char **argv) {
     int opt;
     while ((opt = getopt(argc, argv, "v")) != -1) {
         switch(opt) {
             case 'v':
-                printf("Shell Version: %d.%d\n", MAJOR_VERSION, MINOR_VERSION);
+                // prints shell version and exits
+                printf("Shell Version: %d.%d\n", lab_VERSION_MAJOR, lab_VERSION_MINOR);
                 exit(0);
             default:
+                // prints usage message for invalid arguments
                 fprintf(stderr, "Usage: %s [-v]\n", argv[0]);
                 exit(1);
         }
     }
 }
 
+char *get_prompt(const char *env) {
+    const char *prompt_value = getenv(env);
+
+    if(prompt_value == NULL || strlen(prompt_value) == 0) {
+        prompt_value = "shell>";
+    }
+
+    // allocates memeory for the prompt string
+    char *result = malloc(strlen(prompt_value) + 1);
+
+    if (result == NULL) {
+        perror("malloc failed");
+        exit (1);
+    }
+
+    strcpy(result, prompt_value);
+    return result; 
+}
+
+char *trim_white(char *line) {
+    if(line == NULL) return NULL;
+
+    while (isspace((unsigned char)*line)) line++; //moves pointer forward to skip leading whitespace
+
+    if(*line == '\0') return line; // returns empty string if oonly whitespace
+
+    char *end = line + strlen(line) - 1;
+
+    while( end > line && isspace((unsigned char)*end)) end--;
+
+    *(end + 1) = '\0'; // marks the end of the string
+    
+    return line;
+}
+
 void sh_init(struct shell *sh) {
     sh->shell_terminal = STDIN_FILENO;
     sh->shell_is_interactive = isatty(sh->shell_terminal);
     sh->shell_pgid = getpid();
-    setpgid(sh->shell_terminal, sh->shell_pgid);
+    setpgid(sh->shell_terminal, sh->shell_pgid); 
     tcsetpgrp(sh->shell_terminal, sh->shell_pgid);
-    sh->prompt = get_prompt("SHELL_PROMPT");
+    sh->prompt = get_prompt("MY_PROMPT");
 }
 
-void sh_destroy(struct shell *sh) {
-    free(sh->prompt);
+
+int change_dir(char **dir) {
+    const char *path;
+
+    // If no directory is provided, change to the user's home directory
+    if (dir == NULL || dir[0] == NULL || dir[1] == NULL ) {
+        path = getenv("HOME");
+        if (path == NULL) {
+            fprintf(stderr, "cd: HOME not set\n");
+            return -1;
+
+        }
+    } else {
+        path = dir[0];
+    }
+
+    //printf("DEBUG: Attempting to cd into: %s\n", path); /////debugggg statement
+
+    if (chdir(path) != 0) {
+        fprintf(stderr, "cd: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+
+    //printf("DEBUG: Successfully changed directory\n"); ////debug statement
+    return 0;
 }
 
 char **cmd_parse(char const *line) {
-    UNUSED(line)
-    return NULL;
+    if (line == NULL) return NULL;
+
+    long max_args = sysconf(_SC_ARG_MAX);
+    char **argv = malloc(sizeof(char *) * max_args + 1);
+    if(!argv) {
+        perror("malloc failed");
+        exit(1);
+    }
+     int argc = 0;
+     char *line_copy = strdup(line); // makes copy of the input line
+     char *token = strtok(line_copy, " \t"); // tokenize input
+
+     while (token && argc < max_args) { // stores in argv array
+        argv[argc++] = strdup(token);
+        token = strtok(NULL, " \t");
+     }
+     argv[argc] = NULL; //end of the list
+     free(line_copy); // frees copied line
+     
+     return argv;  // returns list of words
 }
+
 bool do_builtin(struct shell *sh, char **argv) {
-    UNUSED(sh);
-    UNUSED(argv);
+    if (argv[0] == NULL) {
+        return false;
+    }
 
-    return false;
-}
-void cmd_free(char **line) {
-    UNUSED(line);
-}
-
-int main(int argc, char *argv[])
-{
-    parse_args(argc, argv);
-    struct shell sh;
-    sh_init(&sh);
-    char *line = (char *)NULL;
-    while ((line = readline(sh.prompt)))
-    {
-        // do nothing on blank lines don't save history or attempt to exec
-        line = trim_white(line);
-        if (!*line)
-        {
-            free(line);
-            continue;
+    // 'exit' command
+    if (strcmp(argv[0], "exit") == 0) {
+            sh_destroy(sh);
+            exit(0);
         }
-        add_history(line);
-        // check to see if we are launching a built in command
-        char **cmd = cmd_parse(line);
-        if (!do_builtin(&sh, cmd))
-        {
-            pid_t pid = fork();
-            if (pid == 0)
-            {
-                /*This is the child process*/
-                pid_t child = getpid();
-                setpgid(child, child);
-                tcsetpgrp(sh.shell_terminal, child);
-                signal(SIGINT, SIG_DFL);
-                signal(SIGQUIT, SIG_DFL);
-                signal(SIGTSTP, SIG_DFL);
-                signal(SIGTTIN, SIG_DFL);
-                signal(SIGTTOU, SIG_DFL);
-                execvp(cmd[0], cmd);
-                exit(EXIT_FAILURE);
-            }
-            else if (pid < 0)
-            {
-                // If fork failed we are in trouble!
-                perror("fork return < 0 Process creation failed!");
-                abort();
-            }
 
-            /*
-            This is in the parent put the child process into its own
-            process group and give it control of the terminal
-            to avoid a race condition
-            */
-            // printf("shell:%d , child%d\n",sh.shell_pgid, pid);
-            setpgid(pid, pid);
-            tcsetpgrp(sh.shell_terminal, pid);
-            int status;
-            int rval = waitpid(pid, &status, 0);
-            if (rval == -1)
-            {
-                fprintf(stderr, "Wait pid failed with -1\n");
-		        explain_waitpid(status);
-            }
-            cmd_free(cmd);
-            // get control of the shell
-            tcsetpgrp(sh.shell_terminal, sh.shell_pgid);
+    if (strcmp(argv[0], "cd") == 0) {
+        char *dir = argv[1];
+
+        if(dir == NULL) {
+            dir = getenv("HOME"); // default to home directory if no argument
+        }
+        
+        if (dir == NULL) {
+            fprintf(stderr, "cd: HOME not set\n");
+            return true;
+        }
+
+        if (change_dir(argv) == 0) {
+            return true;
+        } else {
+            perror("cd failed");
+            return true;
         }
     }
-    sh_destroy(&sh);
+
+    
+    return false;
+}
+
+
+void cmd_free(char **line) {
+    if (line == NULL) return;
+
+    for (int i =0; line[i] != NULL; i++) {
+        free(line[i]);
+    
+    } 
+    free(line);
+}
+
+void sh_destroy(struct shell *sh) {
+    if (sh->prompt != NULL) {
+        free(sh->prompt);
+
+    }
 }

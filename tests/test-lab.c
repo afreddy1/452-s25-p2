@@ -3,6 +3,26 @@
 #include "../src/lab.h"
 
 
+void test_cmd_parse_empty_string(void) {
+     char **rval = cmd_parse("");
+     TEST_ASSERT_NULL(rval);
+}
+
+void test_cmd_parse_just_spaces(void) {
+     char **rval = cmd_parse("    ");
+     TEST_ASSERT_NULL(rval);
+}
+
+void test_cmd_parse_multiple_spaces(void) {
+     char **rval = cmd_parse("ls        -l    -a    ");
+     TEST_ASSERT_EQUAL_STRING("ls", rval[0]);
+     TEST_ASSERT_EQUAL_STRING("-l", rval[1]);
+     TEST_ASSERT_EQUAL_STRING("-a", rval[2]);
+     TEST_ASSERT_FALSE(rval[3]);
+     cmd_free(rval);
+}
+
+
 void setUp(void) {
   // set stuff up here
 }
@@ -161,6 +181,9 @@ void test_ch_dir_root(void)
 
 int main(void) {
   UNITY_BEGIN();
+  RUN_TEST(test_cmd_parse_empty_string);
+  RUN_TEST(test_cmd_parse_just_spaces);
+  RUN_TEST(test_cmd_parse_multiple_spaces);
   RUN_TEST(test_cmd_parse);
   RUN_TEST(test_cmd_parse2);
   RUN_TEST(test_trim_white_no_whitespace);
