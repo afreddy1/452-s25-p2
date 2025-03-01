@@ -120,9 +120,10 @@ char **cmd_parse(char const *line) {
         token = strtok(NULL, " \t");
      }
      argv[argc] = NULL; //end of the list
+
      free(line_copy); // frees copied line
      
-     return argv;  // returns list of words
+     return argc > 0 ? argv: NULL;  // returns list of words
 }
 
 bool do_builtin(struct shell *sh, char **argv) {
